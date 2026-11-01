@@ -98,7 +98,7 @@ const API="https://ence.netznetz.workers.dev";
 const esc=s=>s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const load=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}};
 const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
-let lit=!!load("ence-candles",0),msgs=load("ence-msgs",[]),total=null;
+let lit=!!load("ence-candles",0),msgs=[],total=null;
 const fl=document.getElementById("flames"),ct=document.getElementById("count"),wall=document.getElementById("wall"),
 btn=document.getElementById("candle"),st=document.getElementById("status");
 async function api(path,opts){
@@ -127,13 +127,12 @@ document.getElementById("form").onsubmit=async e=>{
     const d=await api("/api/message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,name:n.value.trim()})});
     msgs.unshift(d.message);t.value="";
   }catch(err){
-    if(err.message==="429")st.textContent="Please wait a minute before posting again.";
-    else{msgs.unshift({t:text,n:n.value.trim()});save("ence-msgs",msgs);t.value="";st.textContent="Offline: saved on this device only."}
+    st.textContent=err.message==="429"?"Please wait a minute before posting again.":"Could not reach the server ("+err.message+"). Your message was not saved, please try again.";
   }
   b.disabled=false;drawWall();
 };
 drawCandles();drawWall();
-api("/api/state").then(d=>{total=d.candles;msgs=d.messages;drawCandles();drawWall()}).catch(()=>{});
+api("/api/state").then(d=>{total=d.candles;msgs=d.messages;drawCandles();drawWall()}).catch(e=>{st.textContent="Could not load messages from the server ("+e.message+")."});
 </script>
 </body>
 </html>
