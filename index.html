@@ -35,6 +35,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px soli
 form{display:grid;gap:12px;margin-top:8px}
 input,textarea{font:1rem system-ui,sans-serif;background:var(--bg2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:12px;width:100%}
 textarea{min-height:90px;resize:vertical}
+.status{color:var(--mute);font:.9rem system-ui,sans-serif;margin-top:10px;min-height:1.2em}
 .msg{background:var(--bg2);border-left:3px solid var(--gold);padding:14px 18px;margin-top:14px;border-radius:0 8px 8px 0}
 .msg small{display:block;color:var(--mute);font:.85rem system-ui,sans-serif;margin-top:4px}
 footer{padding:48px 0 72px;text-align:center;color:var(--mute);font:.9rem system-ui,sans-serif}
@@ -84,6 +85,7 @@ footer strong{color:var(--gold);font-size:1.2rem}
 <textarea id="text" placeholder="Your message…" maxlength="300" required aria-label="Message"></textarea>
 <button type="submit">Leave a message</button>
 </form>
+<p id="status" class="status" role="status"></p>
 <div id="wall"></div>
 </section>
 </main>
@@ -91,22 +93,47 @@ footer strong{color:var(--gold);font-size:1.2rem}
 <footer><strong>EZ4ENCE</strong><br>Thanks for everything. A fan tribute, not official from ENCE.</footer>
 
 <script>
+// After deploying the worker, put its URL here (no trailing slash).
+const API="https://ence.netznetz.workers.dev";
 const esc=s=>s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const load=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}};
 const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
-let lit=!!load("ence-candles",0),msgs=load("ence-msgs",[]);
-const fl=document.getElementById("flames"),ct=document.getElementById("count"),wall=document.getElementById("wall");
-const btn=document.getElementById("candle");
-function drawCandles(){fl.textContent=lit?"🕯️":"";
-ct.textContent=lit?"Your candle is burning for ENCE":"You can light one candle";
-btn.disabled=lit;btn.textContent=lit?"Candle lit":"Light a candle"}
+let lit=!!load("ence-candles",0),msgs=load("ence-msgs",[]),total=null;
+const fl=document.getElementById("flames"),ct=document.getElementById("count"),wall=document.getElementById("wall"),
+btn=document.getElementById("candle"),st=document.getElementById("status");
+async function api(path,opts){
+  if(!API||API.includes("YOUR-SUBDOMAIN"))throw new Error("API not configured");
+  const r=await fetch(API+path,opts);
+  if(!r.ok)throw new Error(String(r.status));
+  return r.json();
+}
+function drawCandles(){
+  fl.textContent=lit?"🕯️":"";
+  if(total!==null)ct.textContent=total+(total===1?" candle":" candles")+" lit for ENCE"+(lit?" · yours is one of them":"");
+  else ct.textContent=lit?"Your candle is burning for ENCE":"You can light one candle";
+  btn.disabled=lit;btn.textContent=lit?"Candle lit":"Light a candle";
+}
 function drawWall(){wall.innerHTML=msgs.map(m=>`<div class="msg">${esc(m.t)}<small>${esc(m.n||"Anonymous")}</small></div>`).join("")}
-btn.onclick=()=>{if(lit)return;lit=true;save("ence-candles",1);drawCandles()};
-document.getElementById("form").onsubmit=e=>{e.preventDefault();
-const t=document.getElementById("text"),n=document.getElementById("name");
-if(!t.value.trim())return;msgs.unshift({t:t.value.trim(),n:n.value.trim()});save("ence-msgs",msgs);
-t.value="";drawWall()};
+btn.onclick=async()=>{
+  if(lit)return;lit=true;save("ence-candles",1);drawCandles();
+  try{total=(await api("/api/candle",{method:"POST"})).candles;drawCandles()}catch(e){}
+};
+document.getElementById("form").onsubmit=async e=>{
+  e.preventDefault();
+  const t=document.getElementById("text"),n=document.getElementById("name"),b=e.target.querySelector("button");
+  const text=t.value.trim();if(!text)return;
+  b.disabled=true;st.textContent="";
+  try{
+    const d=await api("/api/message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,name:n.value.trim()})});
+    msgs.unshift(d.message);t.value="";
+  }catch(err){
+    if(err.message==="429")st.textContent="Please wait a minute before posting again.";
+    else{msgs.unshift({t:text,n:n.value.trim()});save("ence-msgs",msgs);t.value="";st.textContent="Offline: saved on this device only."}
+  }
+  b.disabled=false;drawWall();
+};
 drawCandles();drawWall();
+api("/api/state").then(d=>{total=d.candles;msgs=d.messages;drawCandles();drawWall()}).catch(()=>{});
 </script>
 </body>
 </html>
